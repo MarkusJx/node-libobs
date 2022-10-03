@@ -8,6 +8,11 @@ In order to build this project, you need to have the following installed:
 * rustc
 * cargo
 
+Set the environment variable `LIBOBS_INCLUDE_DIR` to the obs include directory is located.
+This directory should contain the `obs.h` file.
+Set the environment variable `LIBOBS_LIB_DIR` to the location of the obs library directory.
+This directory should include `obs.(lib|so|dylib)`.
+
 Then, run the following commands:
 ```bash
 npm install
@@ -19,11 +24,19 @@ otherwise the program will not work:
 ```ts
 process.chdir('/path/to/obs/bin/dir');
 ```
+or
+```ts
+import { Obs } from 'libobs';
+
+// You'll need to add your obs binary directory
+// to your PATH for this to work
+process.chdir(await Obs.findObs(true));
+```
 
 ## Example
 ```ts
 import {
-    OBS,
+    Obs,
     ObsSettings,
     SpeakerLayout,
     ScaleType,

@@ -1,33 +1,27 @@
 extern crate napi_build;
 
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn main() {
     napi_build::setup();
 
-    // Tell cargo to look for shared libraries in the specified directory
-    println!(
-        "cargo:rustc-link-search=C:/Users/marku/Desktop/obs-studio/build64/libobs/RelWithDebInfo"
-    );
+    let obs_include_dir = env::var("LIBOBS_INCLUDE_DIR").expect("LIBOBS_INCLUDE_DIR is not set");
+    let obs_lib_dir = env::var("LIBOBS_LIBRARY_DIR").expect("LIBOBS_LIBRARY_DIR is not set");
+    let obs_header = Path::new(&obs_include_dir)
+        .join("obs.h")
+        .to_string_lossy()
+        .to_string();
 
-    // Tell cargo to tell rustc to link the system bzip2
-    // shared library.
+    println!("cargo:rustc-link-search={}", obs_lib_dir);
+    // Link against obs.(lib|so|dylib)
     println!("cargo:rustc-link-lib=obs");
-
-    // Tell cargo to invalidate the built crate whenever the wrapper changes
-    println!("cargo:rerun-if-changed=C:/Users/marku/Desktop/obs-studio/libobs/obs.h");
+    println!("cargo:rerun-if-changed={}", obs_header);
 
     let bindings = bindgen::Builder::default()
-        // The input header we would like to generate
-        // bindings for.
-        .header("C:/Users/marku/Desktop/obs-studio/libobs/obs.h")
-        // Tell cargo to invalidate the built crate whenever any of the
-        // included header files changed.
+        .header(obs_header)
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
-        // Finish the builder and generate the bindings.
         .generate()
-        // Unwrap the Result and panic on failure.
         .expect("Unable to generate bindings");
 
     // Write the bindings to the $OUT_DIR/bindings.rs file.

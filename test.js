@@ -23,11 +23,11 @@ const modulesToSkip = [
 ];
 
 async function main() {
-    process.chdir('C:\\Users\\marku\\Desktop\\obs\\bin\\64bit');
+    process.chdir(await obs.Obs.findObs(true));
     const instance = await obs.Obs.newInstance('en-US');
-    const modules = await instance.getAllModules('C:\\Program Files\\obs-studio');
+    const modules = await instance.getAllModules();
     instance.loadModulesSync(modules.filter(m => !modulesToSkip.includes(m.name)), false);
-    //console.log('Failed modules:', instance.failedModules);
+    console.log('Failed modules:', instance.failedModules);
     console.log('Loaded modules:', instance.loadedModules);
 
     await instance.resetAudio({

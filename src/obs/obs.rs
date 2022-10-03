@@ -16,8 +16,8 @@ use crate::obs::util::obs_error::{obs_error_to_string, OBS_VIDEO_SUCCESS};
 use crate::obs::util::obs_guard::ObsGuard;
 use futures::future;
 use std::ffi::{CStr, CString};
-use std::ptr;
 use std::sync::Arc;
+use std::{env, ptr};
 
 /// The main obs class.
 /// You can only have one instance of this class active at a time.
@@ -129,15 +129,19 @@ impl Obs {
     /// Get all modules which may be loaded.
     /// This may include 'modules' which are not in fact modules.
     #[napi]
-    pub fn get_all_modules_sync(&self, obs_path: String) -> napi::Result<Vec<ObsModule>> {
-        ObsModule::get_all_modules(obs_path)
+    pub fn get_all_modules_sync(&self, obs_path: Option<String>) -> napi::Result<Vec<ObsModule>> {
+        ObsModule::get_all_modules(
+            obs_path
+                .or_else(|| Self::find_obs_sync(Some(false)).ok())
+                .ok_or(to_napi_error_str("Failed to find OBS"))?,
+        )
     }
 
     /// Get all modules which may be loaded.
     /// Async version of `getAllModulesSync`.
     #[napi]
-    pub async fn get_all_modules(&self, obs_path: String) -> napi::Result<Vec<ObsModule>> {
-        future::lazy(move |_| ObsModule::get_all_modules(obs_path)).await
+    pub async fn get_all_modules(&self, obs_path: Option<String>) -> napi::Result<Vec<ObsModule>> {
+        future::lazy(move |_| self.get_all_modules_sync(obs_path)).await
     }
 
     /// Load modules.
@@ -437,7 +441,7 @@ impl Obs {
         id: String,
         settings: Option<&'static ObsSettings>,
     ) -> napi::Result<ObsVideoEncoder> {
-        future::lazy(move |_| self.create_video_encoder_sync(id, name, settings)).await
+        future::lazy(move |_| self.create_video_encoder_sync(name, id, settings)).await
     }
 
     #[napi]
@@ -473,7 +477,7 @@ impl Obs {
         id: String,
         settings: Option<&'static ObsSettings>,
     ) -> napi::Result<ObsAudioEncoder> {
-        future::lazy(move |_| self.create_audio_encoder_sync(id, name, settings)).await
+        future::lazy(move |_| self.create_audio_encoder_sync(name, id, settings)).await
     }
 
     /*pub fn get_audio_monitoring_device(&self) -> napi::Result<AudioDevice> {
@@ -571,6 +575,28 @@ impl Obs {
         settings: Option<&'static ObsSettings>,
     ) -> napi::Result<ObsSource> {
         future::lazy(|_| self.create_source_sync(name, id, channel, settings)).await
+    }
+
+    #[napi]
+    pub fn find_obs_sync(bin_path: Option<bool>) -> napi::Result<String> {
+        let path =
+            env::var_os("PATH").ok_or(to_napi_error_str("Failed to get PATH env variable"))?;
+        let p = env::split_paths(&path)
+            .find(|p| p.join("obs64.exe").exists())
+            .ok_or(to_napi_error_str("Failed to find obs64.exe"))?;
+
+        if bin_path.unwrap_or(false) {
+            Ok(p.to_string_lossy().to_string())
+        } else {
+            p.parent()
+                .and_then(|p| p.parent().map(|p| p.to_string_lossy().to_string()))
+                .ok_or(to_napi_error_str("Failed to find the OBS directory"))
+        }
+    }
+
+    #[napi]
+    pub async fn find_obs(bin_path: Option<bool>) -> napi::Result<String> {
+        future::lazy(|_| Self::find_obs_sync(bin_path)).await
     }
 }
 

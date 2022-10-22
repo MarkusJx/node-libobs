@@ -1,12 +1,15 @@
 use crate::obs::data::obs_data::ObsData;
+use crate::obs::obs::Obs;
 use crate::obs::sys;
-use crate::obs::traits::from_raw::{FromRaw, Guard};
+use crate::obs::traits::from_raw::FromRaw;
 use crate::obs::traits::raw::Raw;
 use crate::obs::util::napi_error::{to_napi_error_str, to_napi_error_string};
 use crate::obs::util::node_util::is_integer;
+use crate::obs::util::obs_guard::ObsGuard;
 use core::fmt::Display;
 use napi::{Env, JsObject, JsString, JsUnknown, ValueType};
 use std::ffi::{CStr, CString};
+use std::sync::Arc;
 
 /// A wrapper around obs settings.
 ///
@@ -42,13 +45,14 @@ impl ObsSettings {
         #[napi(ts_arg_type = "Record<string, string | number | boolean> | null")] data: Option<
             JsObject,
         >,
+        obs: &Obs,
     ) -> napi::Result<Self> {
-        let settings = unsafe { sys::obs_data_create() };
+        let settings = unsafe { obs.library().obs_data_create() };
 
         if settings.is_null() {
             Err(to_napi_error_str("Failed to create settings"))
         } else {
-            let mut res = Self(ObsData::from_raw(settings, None));
+            let mut res = Self(ObsData::from_raw(settings, obs.guard()));
             if let Some(data) = data {
                 let keys = data.get_property_names()?;
                 for i in 0..keys.get_array_length()? {
@@ -93,7 +97,9 @@ impl ObsSettings {
         let value = CString::new(value)?;
 
         unsafe {
-            sys::obs_data_set_string(self.0.raw(), name.as_ptr(), value.as_ptr());
+            self.0
+                .library()
+                .obs_data_set_string(self.0.raw(), name.as_ptr(), value.as_ptr());
         }
 
         Ok(self)
@@ -104,7 +110,11 @@ impl ObsSettings {
     pub fn get_string(&self, name: String) -> napi::Result<String> {
         let name = CString::new(name)?;
 
-        let value = unsafe { sys::obs_data_get_string(self.0.raw(), name.as_ptr()) };
+        let value = unsafe {
+            self.0
+                .library()
+                .obs_data_get_string(self.0.raw(), name.as_ptr())
+        };
 
         if value.is_null() {
             Err(to_napi_error_str("Failed to get string"))
@@ -123,7 +133,9 @@ impl ObsSettings {
         let name = CString::new(name)?;
 
         unsafe {
-            sys::obs_data_set_int(self.0.raw(), name.as_ptr(), value);
+            self.0
+                .library()
+                .obs_data_set_int(self.0.raw(), name.as_ptr(), value);
         }
 
         Ok(self)
@@ -134,7 +146,11 @@ impl ObsSettings {
     pub fn get_int(&self, name: String) -> napi::Result<i64> {
         let name = CString::new(name)?;
 
-        let value = unsafe { sys::obs_data_get_int(self.0.raw(), name.as_ptr()) };
+        let value = unsafe {
+            self.0
+                .library()
+                .obs_data_get_int(self.0.raw(), name.as_ptr())
+        };
 
         Ok(value)
     }
@@ -145,7 +161,9 @@ impl ObsSettings {
         let name = CString::new(name)?;
 
         unsafe {
-            sys::obs_data_set_double(self.0.raw(), name.as_ptr(), value);
+            self.0
+                .library()
+                .obs_data_set_double(self.0.raw(), name.as_ptr(), value);
         }
 
         Ok(self)
@@ -156,7 +174,11 @@ impl ObsSettings {
     pub fn get_double(&self, name: String) -> napi::Result<f64> {
         let name = CString::new(name)?;
 
-        let value = unsafe { sys::obs_data_get_double(self.0.raw(), name.as_ptr()) };
+        let value = unsafe {
+            self.0
+                .library()
+                .obs_data_get_double(self.0.raw(), name.as_ptr())
+        };
 
         Ok(value)
     }
@@ -167,7 +189,9 @@ impl ObsSettings {
         let name = CString::new(name)?;
 
         unsafe {
-            sys::obs_data_set_bool(self.0.raw(), name.as_ptr(), value);
+            self.0
+                .library()
+                .obs_data_set_bool(self.0.raw(), name.as_ptr(), value);
         }
 
         Ok(self)
@@ -178,14 +202,18 @@ impl ObsSettings {
     pub fn get_bool(&self, name: String) -> napi::Result<bool> {
         let name = CString::new(name)?;
 
-        let value = unsafe { sys::obs_data_get_bool(self.0.raw(), name.as_ptr()) };
+        let value = unsafe {
+            self.0
+                .library()
+                .obs_data_get_bool(self.0.raw(), name.as_ptr())
+        };
 
         Ok(value)
     }
 }
 
 impl FromRaw<sys::obs_data_t> for ObsSettings {
-    unsafe fn from_raw_unchecked(raw: *mut sys::obs_data_t, guard: Guard) -> ObsSettings {
+    unsafe fn from_raw_unchecked(raw: *mut sys::obs_data_t, guard: Arc<ObsGuard>) -> ObsSettings {
         Self(ObsData::from_raw_unchecked(raw, guard))
     }
 }

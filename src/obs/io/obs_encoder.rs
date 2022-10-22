@@ -1,7 +1,7 @@
 use crate::obs::data::obs_properties::ObsProperties;
 use crate::obs::data::obs_settings::ObsSettings;
 use crate::obs::sys;
-use crate::obs::traits::from_raw::{FromRaw, Guard};
+use crate::obs::traits::from_raw::FromRaw;
 use crate::obs::traits::raw::Raw;
 use crate::obs::util::napi_error::MapToNapiError;
 use crate::obs::util::obs_guard::ObsGuard;
@@ -15,28 +15,30 @@ struct ObsEncoder {
 
 impl ObsEncoder {
     pub fn get_settings(&self) -> ResultType<ObsSettings> {
-        let data = unsafe { sys::obs_encoder_get_settings(self.encoder) };
+        let data = unsafe { self.guard.library.obs_encoder_get_settings(self.encoder) };
 
         if data.is_null() {
             Err("Failed to get encoder settings".into())
         } else {
-            Ok(ObsSettings::from_raw(data, Some(self.guard.clone())))
+            Ok(ObsSettings::from_raw(data, self.guard.clone()))
         }
     }
 
     pub fn update(&self, settings: &ObsSettings) {
         unsafe {
-            sys::obs_encoder_update(self.encoder, settings.raw());
+            self.guard
+                .library
+                .obs_encoder_update(self.encoder, settings.raw());
         }
     }
 
     pub fn get_properties(&self) -> ResultType<ObsProperties> {
-        let data = unsafe { sys::obs_encoder_properties(self.encoder) };
+        let data = unsafe { self.guard.library.obs_encoder_properties(self.encoder) };
 
         if data.is_null() {
             Err("Failed to get encoder properties".into())
         } else {
-            Ok(ObsProperties::from_raw(data, Some(self.guard.clone())))
+            Ok(ObsProperties::from_raw(data, self.guard.clone()))
         }
     }
 }
@@ -76,11 +78,8 @@ impl ObsVideoEncoder {
 }
 
 impl FromRaw<sys::obs_encoder_t> for ObsVideoEncoder {
-    unsafe fn from_raw_unchecked(encoder: *mut sys::obs_encoder_t, guard: Guard) -> Self {
-        Self(ObsEncoder {
-            encoder,
-            guard: guard.unwrap(),
-        })
+    unsafe fn from_raw_unchecked(encoder: *mut sys::obs_encoder_t, guard: Arc<ObsGuard>) -> Self {
+        Self(ObsEncoder { encoder, guard })
     }
 }
 
@@ -120,11 +119,8 @@ impl ObsAudioEncoder {
 }
 
 impl FromRaw<sys::obs_encoder_t> for ObsAudioEncoder {
-    unsafe fn from_raw_unchecked(encoder: *mut sys::obs_encoder_t, guard: Guard) -> Self {
-        Self(ObsEncoder {
-            encoder,
-            guard: guard.unwrap(),
-        })
+    unsafe fn from_raw_unchecked(encoder: *mut sys::obs_encoder_t, guard: Arc<ObsGuard>) -> Self {
+        Self(ObsEncoder { encoder, guard })
     }
 }
 
@@ -145,7 +141,7 @@ impl Raw<sys::obs_encoder_t> for ObsAudioEncoder {
 impl Drop for ObsEncoder {
     fn drop(&mut self) {
         unsafe {
-            sys::obs_encoder_release(self.encoder);
+            self.guard.library.obs_encoder_release(self.encoder);
         }
     }
 }

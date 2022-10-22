@@ -1,6 +1,8 @@
 use crate::obs::data::inner_obs_property::InnerObsProperty;
 use crate::obs::sys;
-use crate::obs::traits::from_raw::{FromRaw, Guard};
+use crate::obs::traits::from_raw::FromRaw;
+use crate::obs::util::obs_guard::ObsGuard;
+use std::sync::Arc;
 
 /// An obs property
 #[napi(object)]
@@ -19,7 +21,7 @@ pub struct ObsProperty {
 }
 
 impl FromRaw<sys::obs_property_t> for ObsProperty {
-    unsafe fn from_raw_unchecked(property: *mut sys::obs_property_t, guard: Guard) -> Self {
+    unsafe fn from_raw_unchecked(property: *mut sys::obs_property_t, guard: Arc<ObsGuard>) -> Self {
         let inner = InnerObsProperty::from_raw(property, guard);
         Self {
             name: inner.name(),

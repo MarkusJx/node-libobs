@@ -1,6 +1,6 @@
 use crate::obs::data::obs_property_type::ObsPropertyType;
 use crate::obs::sys;
-use crate::obs::traits::from_raw::{FromRaw, Guard};
+use crate::obs::traits::from_raw::FromRaw;
 use crate::obs::util::obs_guard::ObsGuard;
 use crate::obs::util::types::ResultType;
 use core::fmt::Display;
@@ -9,13 +9,13 @@ use std::sync::Arc;
 
 pub struct InnerObsProperty {
     property: *mut sys::obs_property_t,
-    _guard: Arc<ObsGuard>,
+    guard: Arc<ObsGuard>,
 }
 
 impl InnerObsProperty {
     pub fn name(&self) -> Option<String> {
         unsafe {
-            let name = sys::obs_property_name(self.property);
+            let name = self.guard.library.obs_property_name(self.property);
 
             if name.is_null() {
                 None
@@ -27,7 +27,7 @@ impl InnerObsProperty {
 
     pub fn description(&self) -> Option<String> {
         unsafe {
-            let description = sys::obs_property_description(self.property);
+            let description = self.guard.library.obs_property_description(self.property);
 
             if description.is_null() {
                 None
@@ -39,7 +39,10 @@ impl InnerObsProperty {
 
     pub fn long_description(&self) -> Option<String> {
         unsafe {
-            let long_description = sys::obs_property_long_description(self.property);
+            let long_description = self
+                .guard
+                .library
+                .obs_property_long_description(self.property);
 
             if long_description.is_null() {
                 None
@@ -73,15 +76,23 @@ impl InnerObsProperty {
     }
 
     pub fn get_property_type(&self) -> sys::obs_property_type {
-        unsafe { sys::obs_property_get_type(self.property) }
+        unsafe { self.guard.library.obs_property_get_type(self.property) }
     }
 
     pub fn get_list_items(&self) -> ResultType<Vec<String>> {
         let mut items = Vec::new();
 
-        let num = unsafe { sys::obs_property_list_item_count(self.property) };
+        let num = unsafe {
+            self.guard
+                .library
+                .obs_property_list_item_count(self.property)
+        };
         for i in 0..num {
-            let item = unsafe { sys::obs_property_list_item_name(self.property, i) };
+            let item = unsafe {
+                self.guard
+                    .library
+                    .obs_property_list_item_name(self.property, i)
+            };
             if item.is_null() {
                 return Err(format!("Failed to get list item with index {}", i).into());
             }
@@ -95,10 +106,10 @@ impl InnerObsProperty {
 }
 
 impl FromRaw<sys::obs_property_t> for InnerObsProperty {
-    unsafe fn from_raw_unchecked(raw: *mut sys::obs_property_t, guard: Guard) -> Self {
+    unsafe fn from_raw_unchecked(raw: *mut sys::obs_property_t, guard: Arc<ObsGuard>) -> Self {
         Self {
             property: raw,
-            _guard: guard.unwrap(),
+            guard,
         }
     }
 }

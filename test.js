@@ -53,25 +53,25 @@ async function main() {
         outputFormat: obs.VideoFormat.NV12,
     });
 
-    const videoEncoder = await instance.createVideoEncoder('nvenc', 'jim_nvenc', new obs.ObsSettings({
+    const videoEncoder = await instance.createVideoEncoder('nvenc', 'jim_nvenc', instance.newSettings({
         rate_control: 'CQP',
         cqp: 23,
         preset: 'medium',
         profile: 'high',
     }));
 
-    const audioEncoder = await instance.createAudioEncoder('aac', 'ffmpeg_aac', new obs.ObsSettings()
+    const audioEncoder = await instance.createAudioEncoder('aac', 'ffmpeg_aac', instance.newSettings()
         .setString('rate_control', 'CBR')
         .setInt('bitrate', 192));
 
-    await instance.createSource('screen_capture', 'monitor_capture', 0, new obs.ObsSettings()
+    await instance.createSource('screen_capture', 'monitor_capture', 0, instance.newSettings()
         .setBool('capture_cursor', false)
         .setInt('monitor', 1)
         .setInt('method', 2));
     await instance.createSource('audio_capture', 'wasapi_output_capture', 1);
     //console.log(audio.getProperties().getProperties())
 
-    const out = await instance.createOutput('flv_output', 'output', new obs.ObsSettings()
+    const out = await instance.createOutput('flv_output', 'output', instance.newSettings()
         .setString('path', "C:/Users/marku/Desktop/test.flv"));
     console.log(await instance.listOutputTypes());
 

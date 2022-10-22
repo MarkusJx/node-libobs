@@ -15,9 +15,18 @@ use crate::obs::util::napi_error::{to_napi_error_str, to_napi_error_string, MapT
 use crate::obs::util::obs_error::{obs_error_to_string, OBS_VIDEO_SUCCESS};
 use crate::obs::util::obs_guard::ObsGuard;
 use futures::future;
+use napi::{Env, JsObject};
 use std::ffi::{CStr, CString};
+use std::path::Path;
 use std::sync::Arc;
 use std::{env, ptr};
+
+#[cfg(target_os = "windows")]
+const OBS_LIB: &str = "obs.dll";
+#[cfg(target_os = "macos")]
+const OBS_LIB: &str = "libobs.dylib";
+#[cfg(target_os = "linux")]
+const OBS_LIB: &str = "libobs.so";
 
 /// The main obs class.
 /// You can only have one instance of this class active at a time.
@@ -103,15 +112,30 @@ pub struct Obs {
 impl Obs {
     /// Create a new OBS instance.
     #[napi(constructor)]
-    pub fn new(locale: String) -> napi::Result<Self> {
+    pub fn new(locale: String, binding_path: Option<String>) -> napi::Result<Self> {
         let locale = CString::new(locale)?;
+        let library = unsafe {
+            sys::Bindings::load_from_path(
+                binding_path
+                    .or_else(|| {
+                        Self::find_obs_sync(Some(true)).ok().and_then(|p| {
+                            Path::new(&p.to_string())
+                                .join(OBS_LIB)
+                                .to_str()
+                                .map(|p| p.to_string())
+                        })
+                    })
+                    .ok_or(to_napi_error_str("Could not find OBS"))?,
+            )
+            .map_err(|e| to_napi_error_string(e.to_string()))?
+        };
 
         let initialized: bool =
-            unsafe { sys::obs_startup(locale.as_ptr(), ptr::null_mut(), ptr::null_mut()) };
+            unsafe { library.obs_startup(locale.as_ptr(), ptr::null_mut(), ptr::null_mut()) };
 
         if initialized {
             Ok(Self {
-                guard: Arc::new(ObsGuard::new()),
+                guard: Arc::new(ObsGuard::new(library)),
                 failed_modules: Vec::new(),
             })
         } else {
@@ -122,8 +146,22 @@ impl Obs {
     /// Create a new OBS instance.
     /// Async version.
     #[napi(js_name = "newInstance")]
-    pub async fn new_obs_instance(locale: String) -> napi::Result<Obs> {
-        future::lazy(move |_| Self::new(locale)).await
+    pub async fn new_obs_instance(
+        locale: String,
+        binding_path: Option<String>,
+    ) -> napi::Result<Obs> {
+        future::lazy(move |_| Self::new(locale, binding_path)).await
+    }
+
+    #[napi]
+    pub fn create_settings(
+        &self,
+        env: Env,
+        #[napi(ts_arg_type = "Record<string, string | number | boolean> | null")] data: Option<
+            JsObject,
+        >,
+    ) -> napi::Result<ObsSettings> {
+        ObsSettings::new(env, data, self)
     }
 
     /// Get all modules which may be loaded.
@@ -131,6 +169,7 @@ impl Obs {
     #[napi]
     pub fn get_all_modules_sync(&self, obs_path: Option<String>) -> napi::Result<Vec<ObsModule>> {
         ObsModule::get_all_modules(
+            &self.guard.library,
             obs_path
                 .or_else(|| Self::find_obs_sync(Some(false)).ok())
                 .ok_or(to_napi_error_str("Failed to find OBS"))?,
@@ -155,7 +194,7 @@ impl Obs {
         throw_on_load_failed: Option<bool>,
     ) -> napi::Result<()> {
         for module in modules {
-            let res = module.load();
+            let res = module.load(&self.guard.library);
 
             if throw_on_load_failed.unwrap_or(false) {
                 res.map_napi_err()?;
@@ -185,12 +224,14 @@ impl Obs {
         device_name: String,
         device_id: String,
     ) -> napi::Result<bool> {
-        if unsafe { sys::obs_audio_monitoring_available() } {
+        if unsafe { self.guard.library.obs_audio_monitoring_available() } {
             let device_name = CString::new(device_name)?;
             let device_id = CString::new(device_id)?;
 
             let ok = unsafe {
-                sys::obs_set_audio_monitoring_device(device_name.as_ptr(), device_id.as_ptr())
+                self.guard
+                    .library
+                    .obs_set_audio_monitoring_device(device_name.as_ptr(), device_id.as_ptr())
             };
 
             if ok {
@@ -223,7 +264,7 @@ impl Obs {
             scale_type: data.scale_type.value(),
         };
 
-        let res = unsafe { sys::obs_reset_video(&mut info as *mut _) };
+        let res = unsafe { self.guard.library.obs_reset_video(&mut info as *mut _) };
 
         if res == OBS_VIDEO_SUCCESS {
             Ok(())
@@ -253,7 +294,7 @@ impl Obs {
                 fixed_buffering: data.fixed_buffering,
             };
 
-            sys::obs_reset_audio2(&mut info as *mut _)
+            self.guard.library.obs_reset_audio2(&mut info as *mut _)
         };
 
         if res {
@@ -278,7 +319,7 @@ impl Obs {
 
     #[napi(getter)]
     pub fn get_loaded_modules(&self) -> napi::Result<Vec<LoadedObsModule>> {
-        LoadedObsModule::list_loaded_modules()
+        LoadedObsModule::list_loaded_modules(&self.guard)
     }
 
     /// List all encoder types.
@@ -292,7 +333,7 @@ impl Obs {
         unsafe {
             while ok {
                 let mut ptr: *mut std::os::raw::c_char = ptr::null_mut();
-                ok = sys::obs_enum_encoder_types(
+                ok = self.guard.library.obs_enum_encoder_types(
                     i,
                     &mut ptr as *mut *mut std::os::raw::c_char as *mut *const std::os::raw::c_char,
                 );
@@ -325,7 +366,7 @@ impl Obs {
         unsafe {
             while ok {
                 let mut ptr: *mut std::os::raw::c_char = ptr::null_mut();
-                ok = sys::obs_enum_output_types(
+                ok = self.guard.library.obs_enum_output_types(
                     i,
                     &mut ptr as *mut *mut std::os::raw::c_char as *mut *const std::os::raw::c_char,
                 );
@@ -387,7 +428,7 @@ impl Obs {
         unsafe {
             while ok {
                 let mut ptr: *mut std::os::raw::c_char = ptr::null_mut();
-                ok = sys::obs_enum_source_types(
+                ok = self.guard.library.obs_enum_source_types(
                     i,
                     &mut ptr as *mut *mut std::os::raw::c_char as *mut *const std::os::raw::c_char,
                 );
@@ -419,7 +460,7 @@ impl Obs {
         let name = CString::new(name)?;
 
         let encoder = unsafe {
-            sys::obs_video_encoder_create(
+            self.guard.library.obs_video_encoder_create(
                 id.as_ptr(),
                 name.as_ptr(),
                 settings.map(|s| s.raw()).unwrap_or(ptr::null_mut()),
@@ -430,7 +471,7 @@ impl Obs {
         if encoder.is_null() {
             Err(to_napi_error_str("Failed to get encoder"))
         } else {
-            Ok(ObsVideoEncoder::from_raw(encoder, Some(self.guard.clone())))
+            Ok(ObsVideoEncoder::from_raw(encoder, self.guard.clone()))
         }
     }
 
@@ -454,7 +495,7 @@ impl Obs {
         let id = CString::new(id)?;
         let name = CString::new(name)?;
         let encoder = unsafe {
-            sys::obs_audio_encoder_create(
+            self.guard.library.obs_audio_encoder_create(
                 id.as_ptr(),
                 name.as_ptr(),
                 settings.map(|s| s.raw()).unwrap_or(ptr::null_mut()),
@@ -466,7 +507,7 @@ impl Obs {
         if encoder.is_null() {
             Err(to_napi_error_str("Failed to get encoder"))
         } else {
-            Ok(ObsAudioEncoder::from_raw(encoder, Some(self.guard.clone())))
+            Ok(ObsAudioEncoder::from_raw(encoder, self.guard.clone()))
         }
     }
 
@@ -510,7 +551,7 @@ impl Obs {
         let id = CString::new(id)?;
         let name = CString::new(name)?;
         let output = unsafe {
-            sys::obs_output_create(
+            self.guard.library.obs_output_create(
                 id.as_ptr(),
                 name.as_ptr(),
                 settings.map(|s| s.raw()).unwrap_or(ptr::null_mut()),
@@ -521,7 +562,7 @@ impl Obs {
         if output.is_null() {
             Err(to_napi_error_str("Failed to get encoder"))
         } else {
-            Ok(ObsOutput::from_raw(output, Some(self.guard.clone())))
+            Ok(ObsOutput::from_raw(output, self.guard.clone()))
         }
     }
 
@@ -547,7 +588,7 @@ impl Obs {
             let name = CString::new(name)?;
             let id = CString::new(id)?;
 
-            sys::obs_source_create(
+            self.guard.library.obs_source_create(
                 id.as_ptr(),
                 name.as_ptr(),
                 settings.map(|s| s.raw()).unwrap_or(ptr::null_mut()),
@@ -556,13 +597,13 @@ impl Obs {
         };
 
         unsafe {
-            sys::obs_set_output_source(channel, source);
+            self.guard.library.obs_set_output_source(channel, source);
         }
 
         if source.is_null() {
             Err(to_napi_error_str("Failed to create source"))
         } else {
-            Ok(ObsSource::from_raw(source, Some(self.guard.clone())))
+            Ok(ObsSource::from_raw(source, self.guard.clone()))
         }
     }
 
@@ -575,6 +616,11 @@ impl Obs {
         settings: Option<&'static ObsSettings>,
     ) -> napi::Result<ObsSource> {
         future::lazy(|_| self.create_source_sync(name, id, channel, settings)).await
+    }
+
+    #[napi]
+    pub fn new_settings(&self, env: Env, data: Option<JsObject>) -> napi::Result<ObsSettings> {
+        ObsSettings::new(env, data, self)
     }
 
     #[napi]
@@ -597,6 +643,14 @@ impl Obs {
     #[napi]
     pub async fn find_obs(bin_path: Option<bool>) -> napi::Result<String> {
         future::lazy(|_| Self::find_obs_sync(bin_path)).await
+    }
+
+    pub(crate) fn guard(&self) -> Arc<ObsGuard> {
+        self.guard.clone()
+    }
+
+    pub(crate) fn library(&self) -> &sys::Bindings {
+        &self.guard.library
     }
 }
 

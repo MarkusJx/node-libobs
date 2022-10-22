@@ -1,12 +1,19 @@
 use crate::obs::sys;
 use crate::obs::util::napi_error::to_napi_error_str;
+use crate::obs::util::obs_guard::ObsGuard;
 use std::ffi::CStr;
+use std::sync::Arc;
 
 extern "C" fn enum_module(param: *mut std::os::raw::c_void, data: *mut sys::obs_module_t) {
-    let modules = unsafe { &mut *(param as *mut Vec<napi::Result<LoadedObsModule>>) };
-    let module = LoadedObsModule::new(data);
+    let module_data = unsafe { &mut *(param as *mut ModuleData) };
+    let module = LoadedObsModule::new(data, &module_data.guard);
 
-    modules.push(module);
+    module_data.modules.push(module);
+}
+
+struct ModuleData {
+    modules: Vec<napi::Result<LoadedObsModule>>,
+    guard: Arc<ObsGuard>,
 }
 
 /// A loaded OBS module.
@@ -21,13 +28,13 @@ pub struct LoadedObsModule {
 }
 
 impl LoadedObsModule {
-    fn new(module: *mut sys::obs_module_t) -> napi::Result<Self> {
-        let name = unsafe { sys::obs_get_module_name(module) };
-        let file_name = unsafe { sys::obs_get_module_file_name(module) };
-        let description = unsafe { sys::obs_get_module_description(module) };
-        let author = unsafe { sys::obs_get_module_author(module) };
-        let binary_path = unsafe { sys::obs_get_module_binary_path(module) };
-        let data_path = unsafe { sys::obs_get_module_data_path(module) };
+    fn new(module: *mut sys::obs_module_t, guard: &Arc<ObsGuard>) -> napi::Result<Self> {
+        let name = unsafe { guard.library.obs_get_module_name(module) };
+        let file_name = unsafe { guard.library.obs_get_module_file_name(module) };
+        let description = unsafe { guard.library.obs_get_module_description(module) };
+        let author = unsafe { guard.library.obs_get_module_author(module) };
+        let binary_path = unsafe { guard.library.obs_get_module_binary_path(module) };
+        let data_path = unsafe { guard.library.obs_get_module_data_path(module) };
 
         let to_string = |ptr: *const i8| {
             if ptr.is_null() {
@@ -50,12 +57,18 @@ impl LoadedObsModule {
         })
     }
 
-    pub fn list_loaded_modules() -> napi::Result<Vec<Self>> {
-        let mut modules = Vec::<napi::Result<Self>>::new();
+    pub fn list_loaded_modules(guard: &Arc<ObsGuard>) -> napi::Result<Vec<Self>> {
+        let mut module_data = ModuleData {
+            modules: Vec::new(),
+            guard: guard.clone(),
+        };
+
         unsafe {
-            sys::obs_enum_modules(Some(enum_module), &mut modules as *mut _ as *mut _);
+            guard
+                .library
+                .obs_enum_modules(Some(enum_module), &mut module_data as *mut _ as *mut _);
         }
 
-        modules.into_iter().collect::<_>()
+        module_data.modules.into_iter().collect::<_>()
     }
 }

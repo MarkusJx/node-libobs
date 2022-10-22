@@ -1,6 +1,6 @@
 use crate::obs::data::obs_property::ObsProperty;
 use crate::obs::sys;
-use crate::obs::traits::from_raw::{FromRaw, Guard};
+use crate::obs::traits::from_raw::FromRaw;
 use crate::obs::util::obs_guard::ObsGuard;
 use std::ffi::CString;
 use std::sync::Arc;
@@ -18,12 +18,16 @@ impl ObsProperties {
     #[napi]
     pub fn get_property(&self, name: String) -> Option<ObsProperty> {
         let name = CString::new(name).ok()?;
-        let property = unsafe { sys::obs_properties_get(self.properties, name.as_ptr()) };
+        let property = unsafe {
+            self.guard
+                .library
+                .obs_properties_get(self.properties, name.as_ptr())
+        };
 
         if property.is_null() {
             None
         } else {
-            Some(ObsProperty::from_raw(property, Some(self.guard.clone())))
+            Some(ObsProperty::from_raw(property, self.guard.clone()))
         }
     }
 
@@ -31,11 +35,12 @@ impl ObsProperties {
     #[napi]
     pub fn list_properties(&self) -> Vec<ObsProperty> {
         let mut properties = Vec::new();
-        let mut property = unsafe { sys::obs_properties_first(self.properties) };
-        properties.push(ObsProperty::from_raw(property, Some(self.guard.clone())));
+        let mut property = unsafe { self.guard.library.obs_properties_first(self.properties) };
+        properties.push(ObsProperty::from_raw(property, self.guard.clone()));
 
-        while unsafe { sys::obs_property_next(&mut property) } && !property.is_null() {
-            properties.push(ObsProperty::from_raw(property, Some(self.guard.clone())));
+        while unsafe { self.guard.library.obs_property_next(&mut property) } && !property.is_null()
+        {
+            properties.push(ObsProperty::from_raw(property, self.guard.clone()));
         }
 
         properties
@@ -43,18 +48,18 @@ impl ObsProperties {
 }
 
 impl FromRaw<sys::obs_properties_t> for ObsProperties {
-    unsafe fn from_raw_unchecked(properties: *mut sys::obs_properties_t, guard: Guard) -> Self {
-        Self {
-            properties,
-            guard: guard.unwrap(),
-        }
+    unsafe fn from_raw_unchecked(
+        properties: *mut sys::obs_properties_t,
+        guard: Arc<ObsGuard>,
+    ) -> Self {
+        Self { properties, guard }
     }
 }
 
 impl Drop for ObsProperties {
     fn drop(&mut self) {
         unsafe {
-            sys::obs_properties_destroy(self.properties);
+            self.guard.library.obs_properties_destroy(self.properties);
         }
     }
 }

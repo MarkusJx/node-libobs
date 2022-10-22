@@ -2,7 +2,7 @@ use crate::obs::data::obs_properties::ObsProperties;
 use crate::obs::data::obs_settings::ObsSettings;
 use crate::obs::io::obs_encoder::{ObsAudioEncoder, ObsVideoEncoder};
 use crate::obs::sys;
-use crate::obs::traits::from_raw::{FromRaw, Guard};
+use crate::obs::traits::from_raw::FromRaw;
 use crate::obs::traits::raw::Raw;
 use crate::obs::util::napi_error::{to_napi_error_str, to_napi_error_string};
 use crate::obs::util::obs_guard::ObsGuard;
@@ -48,37 +48,49 @@ impl ObsOutput {
         }
 
         if let Some(encoder) = video_encoder {
-            let video = unsafe { sys::obs_get_video() };
+            let video = unsafe { self.guard.library.obs_get_video() };
             if video.is_null() {
                 return Err(to_napi_error_str("Failed to get video"));
             }
 
             unsafe {
-                sys::obs_encoder_set_video(encoder.raw(), video);
-                sys::obs_output_set_video_encoder(self.raw(), encoder.raw());
+                self.guard
+                    .library
+                    .obs_encoder_set_video(encoder.raw(), video);
+                self.guard
+                    .library
+                    .obs_output_set_video_encoder(self.raw(), encoder.raw());
             }
         }
 
         if let Some(encoder) = audio_encoder {
-            let audio = unsafe { sys::obs_get_audio() };
+            let audio = unsafe { self.guard.library.obs_get_audio() };
             if audio.is_null() {
                 return Err(to_napi_error_str("Failed to get audio"));
             }
 
             unsafe {
-                sys::obs_encoder_set_audio(encoder.raw(), audio);
-                sys::obs_output_set_audio_encoder(self.raw(), encoder.raw(), 0);
+                self.guard
+                    .library
+                    .obs_encoder_set_audio(encoder.raw(), audio);
+                self.guard
+                    .library
+                    .obs_output_set_audio_encoder(self.raw(), encoder.raw(), 0);
             }
         }
 
         unsafe {
-            sys::obs_output_set_media(self.raw(), sys::obs_get_video(), sys::obs_get_audio());
+            self.guard.library.obs_output_set_media(
+                self.raw(),
+                self.guard.library.obs_get_video(),
+                self.guard.library.obs_get_audio(),
+            );
         }
 
-        let ok = unsafe { sys::obs_output_start(self.raw()) };
+        let ok = unsafe { self.guard.library.obs_output_start(self.raw()) };
 
         if !ok {
-            let error = unsafe { sys::obs_output_get_last_error(self.raw()) };
+            let error = unsafe { self.guard.library.obs_output_get_last_error(self.raw()) };
             let message: String = if error.is_null() {
                 "Unknown".to_string()
             } else {
@@ -107,7 +119,7 @@ impl ObsOutput {
             return Err(to_napi_error_str("Output is already stopped"));
         }
 
-        unsafe { sys::obs_output_stop(self.raw()) };
+        unsafe { self.guard.library.obs_output_stop(self.raw()) };
         let _ = mem::replace(&mut *state, OutputState::Stopped);
         Ok(())
     }
@@ -122,7 +134,7 @@ impl ObsOutput {
             return Err(to_napi_error_str("Output is already stopped"));
         }
 
-        unsafe { sys::obs_output_force_stop(self.raw()) };
+        unsafe { self.guard.library.obs_output_force_stop(self.raw()) };
         let _ = mem::replace(&mut *state, OutputState::Stopped);
         Ok(())
     }
@@ -130,40 +142,37 @@ impl ObsOutput {
     /// Get the output properties.
     #[napi]
     pub fn get_properties(&self) -> napi::Result<ObsProperties> {
-        let properties = unsafe { sys::obs_output_properties(self.raw()) };
+        let properties = unsafe { self.guard.library.obs_output_properties(self.raw()) };
         if properties.is_null() {
             return Err(to_napi_error_str("Failed to get properties"));
         }
 
-        Ok(ObsProperties::from_raw(
-            properties,
-            Some(self.guard.clone()),
-        ))
+        Ok(ObsProperties::from_raw(properties, self.guard.clone()))
     }
 
     /// Get if the output is paused.
     #[napi(getter)]
     pub fn get_paused(&self) -> bool {
         let _lock = self.state.lock().unwrap();
-        unsafe { sys::obs_output_paused(self.raw()) }
+        unsafe { self.guard.library.obs_output_paused(self.raw()) }
     }
 
     /// Check if the output can be paused.
     #[napi(getter)]
     pub fn can_pause(&self) -> bool {
-        unsafe { sys::obs_output_can_pause(self.raw()) }
+        unsafe { self.guard.library.obs_output_can_pause(self.raw()) }
     }
 
     /// Check if the output is active.
     #[napi(getter)]
     pub fn get_active(&self) -> bool {
-        unsafe { sys::obs_output_active(self.raw()) }
+        unsafe { self.guard.library.obs_output_active(self.raw()) }
     }
 
     /// Get the output name.
     #[napi(getter)]
     pub fn get_name(&self) -> String {
-        unsafe { CStr::from_ptr(sys::obs_output_get_name(self.raw())) }
+        unsafe { CStr::from_ptr(self.guard.library.obs_output_get_name(self.raw())) }
             .to_string_lossy()
             .into_owned()
     }
@@ -177,7 +186,7 @@ impl ObsOutput {
             return Err(to_napi_error_str("The output is not runnning"));
         }
 
-        if !unsafe { sys::obs_output_pause(self.raw(), true) } {
+        if !unsafe { self.guard.library.obs_output_pause(self.raw(), true) } {
             Err(to_napi_error_str("Failed to pause output"))
         } else {
             let _ = mem::replace(&mut *state, OutputState::Paused);
@@ -194,7 +203,7 @@ impl ObsOutput {
             return Err(to_napi_error_str("The output is not paused"));
         }
 
-        if !unsafe { sys::obs_output_pause(self.raw(), false) } {
+        if !unsafe { self.guard.library.obs_output_pause(self.raw(), false) } {
             Err(to_napi_error_str("Failed to resume output"))
         } else {
             let _ = mem::replace(&mut *state, OutputState::Running);
@@ -205,27 +214,31 @@ impl ObsOutput {
     /// Set the output settings.
     #[napi(setter)]
     pub fn set_settings(&self, settings: &ObsSettings) {
-        unsafe { sys::obs_output_update(self.raw(), settings.raw()) };
+        unsafe {
+            self.guard
+                .library
+                .obs_output_update(self.raw(), settings.raw())
+        };
     }
 
     /// Get the output settings.
     #[napi(getter)]
     pub fn get_settings(&self) -> napi::Result<ObsSettings> {
-        let settings = unsafe { sys::obs_output_get_settings(self.raw()) };
+        let settings = unsafe { self.guard.library.obs_output_get_settings(self.raw()) };
         if settings.is_null() {
             return Err(to_napi_error_str("Failed to get settings"));
         } else {
-            Ok(ObsSettings::from_raw(settings, Some(self.guard.clone())))
+            Ok(ObsSettings::from_raw(settings, self.guard.clone()))
         }
     }
 }
 
 impl FromRaw<sys::obs_output_t> for ObsOutput {
-    unsafe fn from_raw_unchecked(raw: *mut sys::obs_output_t, guard: Guard) -> Self {
+    unsafe fn from_raw_unchecked(raw: *mut sys::obs_output_t, guard: Arc<ObsGuard>) -> Self {
         Self {
             output: AtomicPtr::new(raw),
             state: Mutex::new(OutputState::Stopped),
-            guard: guard.unwrap(),
+            guard,
         }
     }
 }
@@ -241,7 +254,7 @@ unsafe impl Send for ObsOutput {}
 impl Drop for ObsOutput {
     fn drop(&mut self) {
         unsafe {
-            sys::obs_output_release(self.raw());
+            self.guard.library.obs_output_release(self.raw());
         }
     }
 }

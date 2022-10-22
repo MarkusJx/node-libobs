@@ -50,7 +50,10 @@ mod separators {
 }
 
 impl ObsModule {
-    pub fn get_all_modules(obs_path: String) -> napi::Result<Vec<ObsModule>> {
+    pub fn get_all_modules(
+        library: &sys::Bindings,
+        obs_path: String,
+    ) -> napi::Result<Vec<ObsModule>> {
         let mut modules = Vec::new();
         unsafe {
             let path = Path::new(obs_path.as_str());
@@ -67,8 +70,8 @@ impl ObsModule {
                     .ok_or(to_napi_error_str("Invalid path"))?,
             )?;
 
-            sys::obs_add_module_path(bin.as_ptr(), data.as_ptr());
-            sys::obs_find_modules2(Some(get_module), &mut modules as *mut _ as *mut _);
+            library.obs_add_module_path(bin.as_ptr(), data.as_ptr());
+            library.obs_find_modules2(Some(get_module), &mut modules as *mut _ as *mut _);
         }
 
         Ok(modules)
@@ -94,12 +97,13 @@ impl ObsModule {
         })
     }
 
-    pub fn load(&self) -> ResultType<()> {
+    pub fn load(&self, library: &sys::Bindings) -> ResultType<()> {
         let mut module: *mut sys::obs_module_t = ptr::null_mut();
         let path = CString::new(self.bin_path.as_str())?;
         let data = CString::new(self.data_path.as_str())?;
 
-        let open_res = unsafe { sys::obs_open_module(&mut module, path.as_ptr(), data.as_ptr()) };
+        let open_res =
+            unsafe { library.obs_open_module(&mut module, path.as_ptr(), data.as_ptr()) };
 
         if (open_res != OBS_MODULE_SUCCESS || module.is_null())
             && open_res != sys::MODULE_HARDCODED_SKIP
@@ -115,7 +119,7 @@ impl ObsModule {
             return Ok(());
         }
 
-        if unsafe { sys::obs_init_module(module) } {
+        if unsafe { library.obs_init_module(module) } {
             Ok(())
         } else {
             Err(format!("Failed to init module '{}'", self.name).into())

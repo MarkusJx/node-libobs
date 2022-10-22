@@ -1,18 +1,19 @@
 use crate::obs::sys;
 
-pub struct ObsGuard {}
+pub struct ObsGuard {
+    pub(crate) library: sys::Bindings,
+}
 
 impl ObsGuard {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(library: sys::Bindings) -> Self {
+        Self { library }
     }
 }
 
 impl Drop for ObsGuard {
     fn drop(&mut self) {
         unsafe {
-            println!("Dropping obs");
-            sys::obs_shutdown();
+            self.library.obs_shutdown();
         }
     }
 }

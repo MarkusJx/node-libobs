@@ -17,6 +17,7 @@ const modulesToSkip = [
     'libEGL',
     'libGLESv2',
     'win-decklink',
+    'rtmp-services',
     //'win-dshow',
     //'win-capture',
     ...skip
@@ -26,6 +27,7 @@ async function main() {
     process.chdir(await obs.Obs.findObs(true));
     const instance = await obs.Obs.newInstance('en-US');
     const modules = await instance.getAllModules();
+    //return console.log(modules);
     instance.loadModulesSync(modules.filter(m => !modulesToSkip.includes(m.name)), false);
     console.log('Failed modules:', instance.failedModules);
     console.log('Loaded modules:', instance.loadedModules);

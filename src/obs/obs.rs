@@ -5,6 +5,7 @@ use crate::obs::io::obs_encoder::{ObsAudioEncoder, ObsVideoEncoder};
 use crate::obs::io::obs_output::ObsOutput;
 use crate::obs::io::obs_source::ObsSource;
 use crate::obs::objects::failed_obs_module::FailedObsModule;
+use crate::obs::objects::obs_options::ObsOptions;
 use crate::obs::objects::reset_audio_data::ResetAudioData;
 use crate::obs::objects::reset_video_data::ResetVideoData;
 use crate::obs::sys;
@@ -112,11 +113,13 @@ pub struct Obs {
 impl Obs {
     /// Create a new OBS instance.
     #[napi(constructor)]
-    pub fn new(locale: String, binding_path: Option<String>) -> napi::Result<Self> {
+    pub fn new(locale: String, options: Option<ObsOptions>) -> napi::Result<Self> {
         let locale = CString::new(locale)?;
         let library = unsafe {
             sys::Bindings::load_from_path(
-                binding_path
+                options
+                    .clone()
+                    .and_then(|o| o.binding_path)
                     .or_else(|| {
                         Self::find_obs_sync(Some(true)).ok().and_then(|p| {
                             Path::new(&p.to_string())
@@ -135,7 +138,10 @@ impl Obs {
 
         if initialized {
             Ok(Self {
-                guard: Arc::new(ObsGuard::new(library)),
+                guard: Arc::new(ObsGuard::new(
+                    library,
+                    options.and_then(|o| o.shutdown).unwrap_or(false),
+                )),
                 failed_modules: Vec::new(),
             })
         } else {
@@ -148,9 +154,9 @@ impl Obs {
     #[napi(js_name = "newInstance")]
     pub async fn new_obs_instance(
         locale: String,
-        binding_path: Option<String>,
+        options: Option<ObsOptions>,
     ) -> napi::Result<Obs> {
-        future::lazy(move |_| Self::new(locale, binding_path)).await
+        future::lazy(move |_| Self::new(locale, options)).await
     }
 
     #[napi]

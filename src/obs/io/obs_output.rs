@@ -183,7 +183,7 @@ impl ObsOutput {
     pub fn pause(&self) -> napi::Result<()> {
         let mut state = self.state.lock().unwrap();
         if *state == OutputState::Stopped || *state == OutputState::Paused {
-            return Err(to_napi_error_str("The output is not runnning"));
+            return Err(to_napi_error_str("The output is not running"));
         }
 
         if !unsafe { self.guard.library.obs_output_pause(self.raw(), true) } {

@@ -80,6 +80,12 @@ async function main() {
     out.start(videoEncoder, audioEncoder);
 
     await new Promise(resolve => setTimeout(resolve, 10000));
+    out.pause();
+
+    await new Promise(resolve => setTimeout(resolve, 10000));
+    out.resume();
+
+    await new Promise(resolve => setTimeout(resolve, 10000));
     out.stop();
 }
 

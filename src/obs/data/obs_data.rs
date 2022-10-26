@@ -5,7 +5,7 @@ use crate::obs::util::obs_guard::ObsGuard;
 use crate::obs::util::types::ResultType;
 use std::ffi::CStr;
 use std::sync::atomic::{AtomicPtr, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, MutexGuard};
 
 pub struct ObsData {
     data: AtomicPtr<sys::obs_data_t>,
@@ -14,7 +14,7 @@ pub struct ObsData {
 
 impl ObsData {
     pub fn to_json_string(&self) -> ResultType<String> {
-        let json = unsafe { self.guard.library.obs_data_get_json(self.raw()) };
+        let json = unsafe { self.guard.library()?.obs_data_get_json(self.raw()) };
 
         if json.is_null() {
             Err("Failed to get json string".into())
@@ -25,8 +25,8 @@ impl ObsData {
         }
     }
 
-    pub fn library(&self) -> &sys::Bindings {
-        &self.guard.library
+    pub fn library(&self) -> napi::Result<MutexGuard<sys::Bindings>> {
+        self.guard.library()
     }
 }
 
@@ -47,8 +47,10 @@ impl Raw<sys::obs_data_t> for ObsData {
 
 impl Drop for ObsData {
     fn drop(&mut self) {
-        unsafe {
-            self.guard.library.obs_data_release(self.raw());
+        if let Ok(library) = self.guard.library() {
+            unsafe {
+                //library.obs_data_release(self.raw());
+            }
         }
     }
 }

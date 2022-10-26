@@ -25,10 +25,14 @@ const modulesToSkip = [
 
 async function main() {
     process.chdir(await obs.Obs.findObs(true));
-    const instance = await obs.Obs.newInstance('en-US');
+    const instance = await obs.Obs.newInstance('en-US', {
+        shutdown: true
+    });
+    //return instance.main();
+
     const modules = await instance.getAllModules();
     //return console.log(modules);
-    instance.loadModulesSync(modules.filter(m => !modulesToSkip.includes(m.name)), false);
+    await instance.loadModules(modules.filter(m => !skip.includes(m.name)), false);
     console.log('Failed modules:', instance.failedModules);
     console.log('Loaded modules:', instance.loadedModules);
 
@@ -55,6 +59,8 @@ async function main() {
         outputFormat: obs.VideoFormat.NV12,
     });
 
+    console.log(await instance.listEncoderTypes())
+    console.log(1);
     const videoEncoder = await instance.createVideoEncoder('nvenc', 'jim_nvenc', instance.newSettings({
         rate_control: 'CQP',
         cqp: 23,
@@ -62,30 +68,45 @@ async function main() {
         profile: 'high',
     }));
 
-    const audioEncoder = await instance.createAudioEncoder('aac', 'ffmpeg_aac', instance.newSettings()
-        .setString('rate_control', 'CBR')
-        .setInt('bitrate', 192));
+    console.log(2);
+    const audioEncoder = await instance.createAudioEncoder('aac', 'ffmpeg_opus', instance.newSettings({
+        rate_control: 'CBR',
+        bitrate: 128,
+    }));
 
-    await instance.createSource('screen_capture', 'monitor_capture', 0, instance.newSettings()
-        .setBool('capture_cursor', false)
-        .setInt('monitor', 1)
-        .setInt('method', 2));
+    console.log(3);
+    await instance.createSource('screen_capture', 'monitor_capture', 0, instance.newSettings({
+        capture_cursor: false,
+        monitor: 1,
+        method: 2
+    }));
     await instance.createSource('audio_capture', 'wasapi_output_capture', 1);
     //console.log(audio.getProperties().getProperties())
 
-    const out = await instance.createOutput('flv_output', 'output', instance.newSettings()
-        .setString('path', "C:/Users/marku/Desktop/test.flv"));
+    console.log(4);
+    const out = await instance.createOutput('output', 'ffmpeg_muxer', instance.newSettings({
+        path: "C:\\Users\\marku\\Desktop\\test.mkv"
+    }));
     console.log(await instance.listOutputTypes());
 
     out.start(videoEncoder, audioEncoder);
 
-    await new Promise(resolve => setTimeout(resolve, 10000));
-    out.pause();
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+        out.pause();
+    } catch (e) {
+        //out.pause();
+        console.error(e)
+    }
 
-    await new Promise(resolve => setTimeout(resolve, 10000));
-    out.resume();
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+        out.resume();
+    } catch (e) {
+        console.error(e)
+    }
 
-    await new Promise(resolve => setTimeout(resolve, 10000));
+    await new Promise(resolve => setTimeout(resolve, 1000));
     out.stop();
 }
 

@@ -19,7 +19,7 @@ use futures::future;
 use napi::{Env, JsObject};
 use std::ffi::{CStr, CString};
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, MutexGuard};
 use std::{env, ptr};
 
 #[cfg(target_os = "windows")]
@@ -175,7 +175,7 @@ impl Obs {
     #[napi]
     pub fn get_all_modules_sync(&self, obs_path: Option<String>) -> napi::Result<Vec<ObsModule>> {
         ObsModule::get_all_modules(
-            &self.guard.library,
+            self.guard.library()?,
             obs_path
                 .or_else(|| Self::find_obs_sync(Some(false)).ok())
                 .ok_or(to_napi_error_str("Failed to find OBS"))?,
@@ -200,7 +200,7 @@ impl Obs {
         throw_on_load_failed: Option<bool>,
     ) -> napi::Result<()> {
         for module in modules {
-            let res = module.load(&self.guard.library);
+            let res = module.load(self.guard.library()?);
 
             if throw_on_load_failed.unwrap_or(false) {
                 res.map_napi_err()?;
@@ -230,15 +230,15 @@ impl Obs {
         device_name: String,
         device_id: String,
     ) -> napi::Result<bool> {
-        if unsafe { self.guard.library.obs_audio_monitoring_available() } {
+        let library = self.guard.library()?;
+        if unsafe { library.obs_audio_monitoring_available() } {
             let device_name = CString::new(device_name)?;
             let device_id = CString::new(device_id)?;
 
             let ok = unsafe {
-                self.guard
-                    .library
-                    .obs_set_audio_monitoring_device(device_name.as_ptr(), device_id.as_ptr())
+                library.obs_set_audio_monitoring_device(device_name.as_ptr(), device_id.as_ptr())
             };
+            drop(library);
 
             if ok {
                 Ok(true)
@@ -270,7 +270,7 @@ impl Obs {
             scale_type: data.scale_type.value(),
         };
 
-        let res = unsafe { self.guard.library.obs_reset_video(&mut info as *mut _) };
+        let res = unsafe { self.guard.library()?.obs_reset_video(&mut info as *mut _) };
 
         if res == OBS_VIDEO_SUCCESS {
             Ok(())
@@ -300,7 +300,7 @@ impl Obs {
                 fixed_buffering: data.fixed_buffering,
             };
 
-            self.guard.library.obs_reset_audio2(&mut info as *mut _)
+            self.guard.library()?.obs_reset_audio2(&mut info as *mut _)
         };
 
         if res {
@@ -336,19 +336,20 @@ impl Obs {
         let mut i: u64 = 0;
         let mut res = vec![];
 
-        unsafe {
-            while ok {
-                let mut ptr: *mut std::os::raw::c_char = ptr::null_mut();
-                ok = self.guard.library.obs_enum_encoder_types(
+        let library = self.guard.library()?;
+        while ok {
+            let mut ptr: *mut std::os::raw::c_char = ptr::null_mut();
+            ok = unsafe {
+                library.obs_enum_encoder_types(
                     i,
                     &mut ptr as *mut *mut std::os::raw::c_char as *mut *const std::os::raw::c_char,
-                );
-                i += 1;
+                )
+            };
+            i += 1;
 
-                if ok && !ptr.is_null() {
-                    let cstr = CStr::from_ptr(ptr);
-                    res.push(cstr.to_string_lossy().to_string());
-                }
+            if ok && !ptr.is_null() {
+                let cstr = unsafe { CStr::from_ptr(ptr) };
+                res.push(cstr.to_string_lossy().to_string());
             }
         }
 
@@ -369,19 +370,20 @@ impl Obs {
         let mut i: u64 = 0;
         let mut res = vec![];
 
-        unsafe {
-            while ok {
-                let mut ptr: *mut std::os::raw::c_char = ptr::null_mut();
-                ok = self.guard.library.obs_enum_output_types(
+        let library = self.guard.library()?;
+        while ok {
+            let mut ptr: *mut std::os::raw::c_char = ptr::null_mut();
+            ok = unsafe {
+                library.obs_enum_output_types(
                     i,
                     &mut ptr as *mut *mut std::os::raw::c_char as *mut *const std::os::raw::c_char,
-                );
-                i += 1;
+                )
+            };
+            i += 1;
 
-                if ok && !ptr.is_null() {
-                    let cstr = CStr::from_ptr(ptr);
-                    res.push(cstr.to_string_lossy().to_string());
-                }
+            if ok && !ptr.is_null() {
+                let cstr = unsafe { CStr::from_ptr(ptr) };
+                res.push(cstr.to_string_lossy().to_string());
             }
         }
 
@@ -431,19 +433,20 @@ impl Obs {
         let mut i: u64 = 0;
         let mut res = vec![];
 
-        unsafe {
-            while ok {
-                let mut ptr: *mut std::os::raw::c_char = ptr::null_mut();
-                ok = self.guard.library.obs_enum_source_types(
+        let library = self.guard.library()?;
+        while ok {
+            let mut ptr: *mut std::os::raw::c_char = ptr::null_mut();
+            ok = unsafe {
+                library.obs_enum_source_types(
                     i,
                     &mut ptr as *mut *mut std::os::raw::c_char as *mut *const std::os::raw::c_char,
-                );
-                i += 1;
+                )
+            };
+            i += 1;
 
-                if ok && !ptr.is_null() {
-                    let cstr = CStr::from_ptr(ptr);
-                    res.push(cstr.to_string_lossy().to_string());
-                }
+            if ok && !ptr.is_null() {
+                let cstr = unsafe { CStr::from_ptr(ptr) };
+                res.push(cstr.to_string_lossy().to_string());
             }
         }
 
@@ -466,7 +469,7 @@ impl Obs {
         let name = CString::new(name)?;
 
         let encoder = unsafe {
-            self.guard.library.obs_video_encoder_create(
+            self.guard.library()?.obs_video_encoder_create(
                 id.as_ptr(),
                 name.as_ptr(),
                 settings.map(|s| s.raw()).unwrap_or(ptr::null_mut()),
@@ -501,7 +504,7 @@ impl Obs {
         let id = CString::new(id)?;
         let name = CString::new(name)?;
         let encoder = unsafe {
-            self.guard.library.obs_audio_encoder_create(
+            self.guard.library()?.obs_audio_encoder_create(
                 id.as_ptr(),
                 name.as_ptr(),
                 settings.map(|s| s.raw()).unwrap_or(ptr::null_mut()),
@@ -557,7 +560,7 @@ impl Obs {
         let id = CString::new(id)?;
         let name = CString::new(name)?;
         let output = unsafe {
-            self.guard.library.obs_output_create(
+            self.guard.library()?.obs_output_create(
                 id.as_ptr(),
                 name.as_ptr(),
                 settings.map(|s| s.raw()).unwrap_or(ptr::null_mut()),
@@ -579,7 +582,7 @@ impl Obs {
         id: String,
         settings: Option<&'static ObsSettings>,
     ) -> napi::Result<ObsOutput> {
-        future::lazy(|_| self.create_output_sync(id, name, settings)).await
+        future::lazy(|_| self.create_output_sync(name, id, settings)).await
     }
 
     #[napi]
@@ -590,11 +593,12 @@ impl Obs {
         channel: u32,
         settings: Option<&ObsSettings>,
     ) -> napi::Result<ObsSource> {
+        let library = self.guard.library()?;
         let source = unsafe {
             let name = CString::new(name)?;
             let id = CString::new(id)?;
 
-            self.guard.library.obs_source_create(
+            library.obs_source_create(
                 id.as_ptr(),
                 name.as_ptr(),
                 settings.map(|s| s.raw()).unwrap_or(ptr::null_mut()),
@@ -603,8 +607,9 @@ impl Obs {
         };
 
         unsafe {
-            self.guard.library.obs_set_output_source(channel, source);
+            library.obs_set_output_source(channel, source);
         }
+        drop(library);
 
         if source.is_null() {
             Err(to_napi_error_str("Failed to create source"))
@@ -655,8 +660,8 @@ impl Obs {
         self.guard.clone()
     }
 
-    pub(crate) fn library(&self) -> &sys::Bindings {
-        &self.guard.library
+    pub(crate) fn library(&self) -> napi::Result<MutexGuard<sys::Bindings>> {
+        self.guard.library()
     }
 }
 

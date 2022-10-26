@@ -15,7 +15,7 @@ pub struct InnerObsProperty {
 impl InnerObsProperty {
     pub fn name(&self) -> Option<String> {
         unsafe {
-            let name = self.guard.library.obs_property_name(self.property);
+            let name = self.guard.library().ok()?.obs_property_name(self.property);
 
             if name.is_null() {
                 None
@@ -27,7 +27,11 @@ impl InnerObsProperty {
 
     pub fn description(&self) -> Option<String> {
         unsafe {
-            let description = self.guard.library.obs_property_description(self.property);
+            let description = self
+                .guard
+                .library()
+                .ok()?
+                .obs_property_description(self.property);
 
             if description.is_null() {
                 None
@@ -41,7 +45,8 @@ impl InnerObsProperty {
         unsafe {
             let long_description = self
                 .guard
-                .library
+                .library()
+                .ok()?
                 .obs_property_long_description(self.property);
 
             if long_description.is_null() {
@@ -75,24 +80,17 @@ impl InnerObsProperty {
         ObsPropertyType::try_from(self)
     }
 
-    pub fn get_property_type(&self) -> sys::obs_property_type {
-        unsafe { self.guard.library.obs_property_get_type(self.property) }
+    pub fn get_property_type(&self) -> ResultType<sys::obs_property_type> {
+        unsafe { Ok(self.guard.library()?.obs_property_get_type(self.property)) }
     }
 
     pub fn get_list_items(&self) -> ResultType<Vec<String>> {
         let mut items = Vec::new();
 
-        let num = unsafe {
-            self.guard
-                .library
-                .obs_property_list_item_count(self.property)
-        };
+        let library = self.guard.library()?;
+        let num = unsafe { library.obs_property_list_item_count(self.property) };
         for i in 0..num {
-            let item = unsafe {
-                self.guard
-                    .library
-                    .obs_property_list_item_name(self.property, i)
-            };
+            let item = unsafe { library.obs_property_list_item_name(self.property, i) };
             if item.is_null() {
                 return Err(format!("Failed to get list item with index {}", i).into());
             }

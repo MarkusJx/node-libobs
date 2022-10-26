@@ -26,7 +26,7 @@ impl TryFrom<&InnerObsProperty> for ObsPropertyType {
     type Error = Box<dyn Error>;
 
     fn try_from(value: &InnerObsProperty) -> ResultType<Self> {
-        Ok(match value.get_property_type() {
+        Ok(match value.get_property_type()? {
             sys::obs_property_type_OBS_PROPERTY_INVALID => ObsPropertyType::Invalid,
             sys::obs_property_type_OBS_PROPERTY_BOOL => ObsPropertyType::Bool,
             sys::obs_property_type_OBS_PROPERTY_INT => ObsPropertyType::Int,

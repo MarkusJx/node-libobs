@@ -32,7 +32,7 @@ impl ObsSource {
     #[napi]
     pub fn get_default_settings(&self) -> napi::Result<ObsSettings> {
         let id = CString::new(self.id.clone())?;
-        let settings = unsafe { self.guard.library.obs_get_source_defaults(id.as_ptr()) };
+        let settings = unsafe { self.guard.library()?.obs_get_source_defaults(id.as_ptr()) };
 
         if settings.is_null() {
             Err(to_napi_error_str("Failed to get default settings"))
@@ -44,7 +44,7 @@ impl ObsSource {
     /// Get the properties for this source.
     #[napi]
     pub fn get_properties(&self) -> napi::Result<ObsProperties> {
-        let properties = unsafe { self.guard.library.obs_source_properties(self.source) };
+        let properties = unsafe { self.guard.library()?.obs_source_properties(self.source) };
 
         if properties.is_null() {
             Err(to_napi_error_str("Failed to get properties"))
@@ -55,18 +55,20 @@ impl ObsSource {
 
     /// Update the settings of the source.
     #[napi]
-    pub fn update_settings(&self, settings: &ObsSettings) {
+    pub fn update_settings(&self, settings: &ObsSettings) -> napi::Result<()> {
         unsafe {
             self.guard
-                .library
+                .library()?
                 .obs_source_update(self.source, settings.raw());
         }
+
+        Ok(())
     }
 
     /// Get the settings of the source.
     #[napi(getter)]
     pub fn get_settings(&self) -> napi::Result<ObsSettings> {
-        let settings = unsafe { self.guard.library.obs_source_get_settings(self.source) };
+        let settings = unsafe { self.guard.library()?.obs_source_get_settings(self.source) };
 
         if settings.is_null() {
             Err(to_napi_error_str("Failed to get settings"))
@@ -79,7 +81,7 @@ impl ObsSource {
 impl FromRaw<sys::obs_source_t> for ObsSource {
     unsafe fn from_raw_unchecked(source: *mut sys::obs_source_t, guard: Arc<ObsGuard>) -> Self {
         let id = {
-            let id = guard.library.obs_source_get_id(source);
+            let id = guard.library().unwrap().obs_source_get_id(source);
             let id = CStr::from_ptr(id as *mut _);
             id.to_string_lossy().to_string()
         };
@@ -98,8 +100,10 @@ unsafe impl Send for ObsSource {}
 
 impl Drop for ObsSource {
     fn drop(&mut self) {
-        unsafe {
-            self.guard.library.obs_source_release(self.source);
+        if let Ok(library) = self.guard.library() {
+            unsafe {
+                //library.obs_source_release(self.source);
+            }
         }
     }
 }

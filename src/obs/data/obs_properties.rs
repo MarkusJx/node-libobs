@@ -16,34 +16,35 @@ pub struct ObsProperties {
 impl ObsProperties {
     /// Get a property by its name.
     #[napi]
-    pub fn get_property(&self, name: String) -> Option<ObsProperty> {
-        let name = CString::new(name).ok()?;
+    pub fn get_property(&self, name: String) -> napi::Result<Option<ObsProperty>> {
+        let name = CString::new(name)?;
         let property = unsafe {
             self.guard
-                .library
+                .library()?
                 .obs_properties_get(self.properties, name.as_ptr())
         };
 
         if property.is_null() {
-            None
+            Ok(None)
         } else {
-            Some(ObsProperty::from_raw(property, self.guard.clone()))
+            Ok(Some(ObsProperty::from_raw(property, self.guard.clone())))
         }
     }
 
     /// Get a list of all properties stored in this object.
     #[napi]
-    pub fn list_properties(&self) -> Vec<ObsProperty> {
+    pub fn list_properties(&self) -> napi::Result<Vec<ObsProperty>> {
+        let library = self.guard.library()?;
+
         let mut properties = Vec::new();
-        let mut property = unsafe { self.guard.library.obs_properties_first(self.properties) };
+        let mut property = unsafe { library.obs_properties_first(self.properties) };
         properties.push(ObsProperty::from_raw(property, self.guard.clone()));
 
-        while unsafe { self.guard.library.obs_property_next(&mut property) } && !property.is_null()
-        {
+        while unsafe { library.obs_property_next(&mut property) } && !property.is_null() {
             properties.push(ObsProperty::from_raw(property, self.guard.clone()));
         }
 
-        properties
+        Ok(properties)
     }
 }
 
@@ -58,8 +59,10 @@ impl FromRaw<sys::obs_properties_t> for ObsProperties {
 
 impl Drop for ObsProperties {
     fn drop(&mut self) {
-        unsafe {
-            self.guard.library.obs_properties_destroy(self.properties);
+        if let Ok(library) = self.guard.library() {
+            unsafe {
+                //library.obs_properties_destroy(self.properties);
+            }
         }
     }
 }

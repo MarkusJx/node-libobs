@@ -5,6 +5,7 @@ use crate::obs::util::types::ResultType;
 use std::ffi::{CStr, CString};
 use std::path::Path;
 use std::ptr;
+use std::sync::MutexGuard;
 
 extern "C" fn get_module(param: *mut std::ffi::c_void, info: *const sys::obs_module_info2) {
     let modules = unsafe { &mut *(param as *mut Vec<ObsModule>) };
@@ -51,7 +52,7 @@ mod separators {
 
 impl ObsModule {
     pub fn get_all_modules(
-        library: &sys::Bindings,
+        library: MutexGuard<sys::Bindings>,
         obs_path: String,
     ) -> napi::Result<Vec<ObsModule>> {
         let mut modules = Vec::new();
@@ -97,7 +98,7 @@ impl ObsModule {
         })
     }
 
-    pub fn load(&self, library: &sys::Bindings) -> ResultType<()> {
+    pub fn load(&self, library: MutexGuard<sys::Bindings>) -> ResultType<()> {
         let mut module: *mut sys::obs_module_t = ptr::null_mut();
         let path = CString::new(self.bin_path.as_str())?;
         let data = CString::new(self.data_path.as_str())?;

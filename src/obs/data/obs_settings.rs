@@ -47,7 +47,7 @@ impl ObsSettings {
         >,
         obs: &Obs,
     ) -> napi::Result<Self> {
-        let settings = unsafe { obs.library().obs_data_create() };
+        let settings = unsafe { obs.library()?.obs_data_create() };
 
         if settings.is_null() {
             Err(to_napi_error_str("Failed to create settings"))
@@ -90,6 +90,11 @@ impl ObsSettings {
         }
     }
 
+    pub fn new_empty(obs: &Obs) -> napi::Result<Self> {
+        let settings = unsafe { obs.library()?.obs_data_create() };
+        Ok(Self(ObsData::from_raw(settings, obs.guard())))
+    }
+
     /// Set a string value.
     #[napi]
     pub fn set_string(&mut self, name: String, value: String) -> napi::Result<&Self> {
@@ -98,7 +103,7 @@ impl ObsSettings {
 
         unsafe {
             self.0
-                .library()
+                .library()?
                 .obs_data_set_string(self.0.raw(), name.as_ptr(), value.as_ptr());
         }
 
@@ -112,7 +117,7 @@ impl ObsSettings {
 
         let value = unsafe {
             self.0
-                .library()
+                .library()?
                 .obs_data_get_string(self.0.raw(), name.as_ptr())
         };
 
@@ -134,7 +139,7 @@ impl ObsSettings {
 
         unsafe {
             self.0
-                .library()
+                .library()?
                 .obs_data_set_int(self.0.raw(), name.as_ptr(), value);
         }
 
@@ -148,7 +153,7 @@ impl ObsSettings {
 
         let value = unsafe {
             self.0
-                .library()
+                .library()?
                 .obs_data_get_int(self.0.raw(), name.as_ptr())
         };
 
@@ -162,7 +167,7 @@ impl ObsSettings {
 
         unsafe {
             self.0
-                .library()
+                .library()?
                 .obs_data_set_double(self.0.raw(), name.as_ptr(), value);
         }
 
@@ -176,7 +181,7 @@ impl ObsSettings {
 
         let value = unsafe {
             self.0
-                .library()
+                .library()?
                 .obs_data_get_double(self.0.raw(), name.as_ptr())
         };
 
@@ -190,7 +195,7 @@ impl ObsSettings {
 
         unsafe {
             self.0
-                .library()
+                .library()?
                 .obs_data_set_bool(self.0.raw(), name.as_ptr(), value);
         }
 
@@ -204,7 +209,7 @@ impl ObsSettings {
 
         let value = unsafe {
             self.0
-                .library()
+                .library()?
                 .obs_data_get_bool(self.0.raw(), name.as_ptr())
         };
 

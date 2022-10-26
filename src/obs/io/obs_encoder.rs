@@ -15,7 +15,7 @@ struct ObsEncoder {
 
 impl ObsEncoder {
     pub fn get_settings(&self) -> ResultType<ObsSettings> {
-        let data = unsafe { self.guard.library.obs_encoder_get_settings(self.encoder) };
+        let data = unsafe { self.guard.library()?.obs_encoder_get_settings(self.encoder) };
 
         if data.is_null() {
             Err("Failed to get encoder settings".into())
@@ -24,16 +24,18 @@ impl ObsEncoder {
         }
     }
 
-    pub fn update(&self, settings: &ObsSettings) {
+    pub fn update(&self, settings: &ObsSettings) -> napi::Result<()> {
         unsafe {
             self.guard
-                .library
+                .library()?
                 .obs_encoder_update(self.encoder, settings.raw());
         }
+
+        Ok(())
     }
 
     pub fn get_properties(&self) -> ResultType<ObsProperties> {
-        let data = unsafe { self.guard.library.obs_encoder_properties(self.encoder) };
+        let data = unsafe { self.guard.library()?.obs_encoder_properties(self.encoder) };
 
         if data.is_null() {
             Err("Failed to get encoder properties".into())
@@ -66,7 +68,7 @@ impl ObsVideoEncoder {
 
     /// Update the settings of this encoder.
     #[napi]
-    pub fn update_settings(&self, settings: &ObsSettings) {
+    pub fn update_settings(&self, settings: &ObsSettings) -> napi::Result<()> {
         self.0.update(settings)
     }
 
@@ -107,7 +109,7 @@ impl ObsAudioEncoder {
 
     /// Update the settings of this encoder.
     #[napi]
-    pub fn update_settings(&self, settings: &ObsSettings) {
+    pub fn update_settings(&self, settings: &ObsSettings) -> napi::Result<()> {
         self.0.update(settings)
     }
 
@@ -140,8 +142,10 @@ impl Raw<sys::obs_encoder_t> for ObsAudioEncoder {
 
 impl Drop for ObsEncoder {
     fn drop(&mut self) {
-        unsafe {
-            self.guard.library.obs_encoder_release(self.encoder);
+        if let Ok(library) = self.guard.library() {
+            unsafe {
+                //library.obs_encoder_release(self.encoder);
+            }
         }
     }
 }
